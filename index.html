@@ -396,7 +396,8 @@ function S(tag, attrs, style){
   if (style) for (const k in style) e.style[k] = style[k];
   return e;
 }
-const tick = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+// yield to the UI; falls back to a timer because hidden/background tabs never fire requestAnimationFrame
+const tick = () => new Promise(r => { let done = false; const go = () => { if (!done){ done = true; setTimeout(r, 0); } }; requestAnimationFrame(go); setTimeout(go, 60); });
 
 /* ---------------- formatting ---------------- */
 const NF = (a, b) => new Intl.NumberFormat('en-IN', {minimumFractionDigits:a, maximumFractionDigits:b});
