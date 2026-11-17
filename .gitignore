@@ -1,11 +1,15 @@
-# Never commit freight-register data
+# Register files belong only in data/ (published with the app)
 *.xlsx
 *.xlsm
 *.xls
 *.csv
-~$*
+!data/*.xlsx
+!data/*.xlsm
+!data/*.xls
+!data/*.csv
 
-# OS clutter
+# Excel lock files and OS clutter
+~$*
 Thumbs.db
 desktop.ini
 .DS_Store

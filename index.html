@@ -272,12 +272,14 @@ select.mini{height:28px;border:1px solid var(--border-strong);border-radius:7px;
 <section class="empty" id="empty">
   <div class="card">
     <h1>Rake analytics from the MCFL freight register</h1>
-    <p>Point the app at the folder that holds the month-wise registers (for example <code>D:\Railways Freight Register\MCFL</code>). It reads every <code>.xlsx</code> register in that folder and its sub-folders, right here in the browser. Nothing is uploaded anywhere.</p>
+    <p>Opened from its GitHub Pages link, the app loads the registers stored in the repository's <code>data</code> folder by itself. You can also point it at a folder of month-wise registers on your computer (for example <code>D:\Railways Freight Register\MCFL</code>); local files are read in the browser and not uploaded.</p>
     <div class="row">
       <button class="btn primary" id="btnPick2" type="button">Select MCFL folder</button>
       <button class="btn" id="btnRescan2" type="button" hidden>Rescan last folder</button>
+      <button class="btn" id="btnOnline" type="button">Load data from GitHub</button>
       <label class="btn">Choose files<input type="file" id="fileInput2" multiple accept=".xlsx,.xlsm,.xls,.csv" hidden></label>
     </div>
+    <p class="note" id="onlineNote"></p>
     <p class="note" id="rememberNote"></p>
     <ul>
       <li>A <b>rake</b> is an RR with CC wt (WGHT CHRG) of 2,000 MT or more. Smaller RRs stay in commercial accounting.</li>
@@ -569,7 +571,7 @@ function mapCols(norm){
   return idx;
 }
 
-async function loadFiles(list, sourceName, kind){
+async function loadFiles(list, sourceName, kind, via){
   list = list.filter(f => /\.(xlsx|xlsm|xls|csv)$/i.test(f.name) && !f.name.startsWith('~$'))
              .sort((a, b) => (monthFromName(a.name) || a.name).localeCompare(monthFromName(b.name) || b.name) || a.path.localeCompare(b.path));
   if (!list.length){ alert('No .xlsx / .xls / .csv registers were found in "' + sourceName + '".'); return; }
@@ -577,7 +579,7 @@ async function loadFiles(list, sourceName, kind){
   const raw = [], files = [], seen = new Set();
   for (let i = 0; i < list.length; i++){
     const f = list[i];
-    $('#progTitle').textContent = 'Reading registers… ' + (i + 1) + ' of ' + list.length;
+    $('#progTitle').textContent = (kind === 'online' ? 'Downloading and reading registers… ' : 'Reading registers… ') + (i + 1) + ' of ' + list.length;
     $('#progSub').textContent = f.path;
     $('#progBar').style.width = (i / list.length * 100) + '%';
     await tick();
@@ -626,13 +628,14 @@ async function loadFiles(list, sourceName, kind){
   await tick();
   prog.hidden = true;
   if (!raw.length){ alert('No RR rows could be read. Check that the files are freight-register exports with STTN FROM and WGHT CHRG columns.'); return; }
-  RAW = raw; FILES = files; SOURCE = {name:sourceName, at:new Date(), kind};
+  RAW = raw; FILES = files; SOURCE = {name:sourceName, at:new Date(), kind, via:via || null};
   derive();
   DMIN = RAW.reduce((a, r) => r.d < a ? r.d : a, RAW[0].d);
   DMAX = RAW.reduce((a, r) => r.d > a ? r.d : a, RAW[0].d);
   initFilters();
   $('#empty').hidden = true; $('#app').hidden = false;
   $('#btnPickLabel').textContent = 'Change folder';
+  if (kind === 'online') $('#btnRescan').hidden = false;
   render();
 }
 
@@ -689,6 +692,63 @@ async function rescan(){
     if (p !== 'granted') return;
     await scanHandle(dir);
   } catch(e){ console.warn(e); pickFolder(); }
+}
+/* ---------------- online data (GitHub repository data/ folder) ---------------- */
+// On <owner>.github.io/<repo>/ the app reads every register in the repo's data/ folder.
+// File list comes from the GitHub contents API (always current); data/manifest.json is the fallback.
+const ONLINE_DEFAULT = {owner:'eternalethereal43', repo:'mcfl-rake-analytics', branch:'main'};
+const ONLINE = (() => {
+  const m = location.hostname.match(/^([a-z0-9-]+)\.github\.io$/i);
+  if (!m) return null;
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  const repo = seg && !/\.html?$/i.test(seg) ? seg : m[1] + '.github.io';
+  return {owner:m[1], repo, branch:'main', base:location.origin + '/' + (repo === m[1] + '.github.io' ? '' : repo + '/')};
+})();
+let LAST_ONLINE = null;
+const DATA_EXT = /\.(xlsx|xlsm|xls|csv)$/i;
+async function listOnline(cfg){
+  const raw = 'https://raw.githubusercontent.com/' + cfg.owner + '/' + cfg.repo + '/' + cfg.branch + '/';
+  const urlsFor = (name, dl) => {
+    const rel = cfg.base ? [cfg.base + 'data/' + encodeURIComponent(name)] : [];
+    return rel.concat([dl || raw + 'data/' + encodeURIComponent(name)]);
+  };
+  try {
+    const r = await fetch('https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo + '/contents/data?ref=' + cfg.branch, {headers:{Accept:'application/vnd.github+json'}, cache:'no-store'});
+    if (r.ok){
+      const j = await r.json();
+      if (Array.isArray(j)) return {via:'GitHub file list', files:j.filter(x => x.type === 'file' && DATA_EXT.test(x.name) && !x.name.startsWith('~$')).map(x => ({name:x.name, size:x.size, urls:urlsFor(x.name, x.download_url)}))};
+    }
+  } catch(e){ console.warn('GitHub listing failed, trying manifest', e); }
+  for (const base of [cfg.base, raw].filter(Boolean)){
+    try {
+      const r = await fetch(base + 'data/manifest.json', {cache:'no-cache'});
+      if (!r.ok) continue;
+      const m = await r.json();
+      return {via:'data/manifest.json', files:(m.files || []).filter(f => DATA_EXT.test(f.name)).map(f => ({name:f.name, size:f.size || 0, urls:urlsFor(f.name)}))};
+    } catch(e){}
+  }
+  throw new Error('Could not list the data folder of ' + cfg.owner + '/' + cfg.repo + '.');
+}
+async function fetchBuf(urls){
+  let last;
+  for (const u of urls){
+    try { const r = await fetch(u, {cache:'no-cache'}); if (r.ok) return await r.arrayBuffer(); last = new Error('HTTP ' + r.status + ' for ' + u); }
+    catch(e){ last = e; }
+  }
+  throw last || new Error('download failed');
+}
+async function loadOnline(cfg){
+  cfg = cfg || ONLINE || ONLINE_DEFAULT;
+  const prog = $('#progress'); prog.hidden = false;
+  $('#progTitle').textContent = 'Finding registers online…'; $('#progSub').textContent = cfg.owner + '/' + cfg.repo + ' · data/'; $('#progBar').style.width = '0%';
+  let listing;
+  try { listing = await listOnline(cfg); }
+  catch(e){ prog.hidden = true; $('#onlineNote').textContent = e.message + ' Pick a local folder instead.'; return false; }
+  if (!listing.files.length){ prog.hidden = true; $('#onlineNote').textContent = 'The data folder of ' + cfg.owner + '/' + cfg.repo + ' has no registers yet.'; return false; }
+  LAST_ONLINE = cfg; DIR = null;
+  const list = listing.files.map(f => ({name:f.name, path:'data/' + f.name, file:{size:f.size, lastModified:null, arrayBuffer:() => fetchBuf(f.urls)}}));
+  await loadFiles(list, 'online data · ' + cfg.owner + '/' + cfg.repo, 'online', listing.via);
+  return true;
 }
 function showRemembered(dir){
   if (!dir) return;
@@ -1225,7 +1285,7 @@ function render(){
   P.innerHTML = '';
   RENDER[VIEW.tab](P, R);
   const nf = FILES.length, tr = RAW.length;
-  $('#foot').textContent = 'Read ' + nf + ' file' + (nf === 1 ? '' : 's') + ' from “' + SOURCE.name + '” · ' + nf0.format(tr) + ' RRs · data ' + fmtD(DMIN) + ' – ' + fmtD(DMAX) + ' · scanned ' + SOURCE.at.toLocaleString('en-IN');
+  $('#foot').textContent = 'Read ' + nf + ' file' + (nf === 1 ? '' : 's') + ' from “' + SOURCE.name + '”' + (SOURCE.via ? ' (via ' + SOURCE.via + ')' : '') + ' · ' + nf0.format(tr) + ' RRs · data ' + fmtD(DMIN) + ' – ' + fmtD(DMAX) + ' · scanned ' + SOURCE.at.toLocaleString('en-IN');
   $('#brandSub').textContent = '“' + SOURCE.name + '” · ' + fmtD(DMIN) + ' – ' + fmtD(DMAX);
 }
 const RENDER = {};
@@ -1843,7 +1903,7 @@ RENDER.data = function(P){
     {key:'rrs', label:'RRs read', num:true, fmt:F0}, {key:'rk', label:'Rakes', num:true, get:r => RAW.filter(x => FILES[x.fi] === r && x.rake).length, fmt:F0},
     {key:'dups', label:'Duplicates skipped', num:true, fmt:v => v ? F0(v) : '–'},
     {key:'size', label:'Size', num:true, fmt:v => (v / 1048576).toFixed(1) + ' MB'},
-    {key:'mod', label:'Modified', fmt:v => new Date(v).toLocaleString('en-IN')},
+    {key:'mod', label:'Modified', fmt:v => v ? new Date(v).toLocaleString('en-IN') : '–'},
     {key:'issue', label:'Notes', get:r => [r.error, (!r.rrs && r.dups) ? 'Every row repeats another file (skipped)' : '', r.missing.length ? 'Missing columns — ' + r.missing.join('; ') : '', r.guessed ? r.guessed + ' RRs without RR date (month taken from file name)' : ''].filter(Boolean).join(' · ') || 'OK', cls:r => (r.error || r.missing.length) ? '' : 'dim'}
   ];
   const ft = dataTable({id:'files', sortKey:'months', sortDir:1, columns:fcols, rows:FILES, short:true});
@@ -1899,7 +1959,7 @@ RENDER.data = function(P){
   P.append(h('div', {class:'note'}, 'RR-level lookup and export are in the Rake register tab (switch it to All RRs to include loads below the threshold).'));
 };
 function remap(){ derive(); const keepS = [...F.sidings].filter(s => CF.includes(cfOf(s))); F.sidings.clear(); keepS.forEach(s => F.sidings.add(s)); msSiding.update(); render(); }
-function rescanOrPick(){ if (DIR || FS_OK) rescan(); else $('#dirInput').click(); }
+function rescanOrPick(){ if (SOURCE.kind === 'online') loadOnline(LAST_ONLINE); else if (DIR || FS_OK) rescan(); else $('#dirInput').click(); }
 
 /* ---------------- boot ---------------- */
 function boot(){
@@ -1913,13 +1973,17 @@ function boot(){
   bindFilters();
   let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(render, 200); });
   if (!FS_OK) $('#rememberNote').textContent = 'This browser cannot remember folders. Use Chrome or Edge for one-click rescans, or pick the folder each time.';
-  if (FS_OK) getHandle().then(async dir => {
+  $('#btnOnline').addEventListener('click', () => loadOnline());
+  if (ONLINE){
+    $('#onlineNote').textContent = 'Loading the registers stored in ' + ONLINE.owner + '/' + ONLINE.repo + '…';
+    loadOnline(ONLINE);
+  } else if (FS_OK) getHandle().then(async dir => {
     if (!dir) return;
     showRemembered(dir); DIR = dir;
     try { if (await dir.queryPermission({mode:'read'}) === 'granted') await scanHandle(dir); } catch(e){}
   });
   if (typeof XLSX === 'undefined') alert('The Excel reader did not load. Please re-download this file.');
-  window.__mcfl = {loadFiles, state:F, view:VIEW, raw:() => RAW, settings:() => settings, setTab, render};
+  window.__mcfl = {loadFiles, loadOnline, state:F, view:VIEW, raw:() => RAW, settings:() => settings, setTab, render};
 }
 boot();
 })();

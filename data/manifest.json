@@ -1,0 +1,33 @@
+{
+ "note": "Fallback list of registers. The app normally lists this folder through GitHub, so new files are picked up even if this list is not updated.",
+ "files": [
+  {
+   "name": "MCFL_APR26_assembled.xlsx",
+   "size": 4068124
+  },
+  {
+   "name": "MCFL_AUG26_assembled.xlsx",
+   "size": 6077252
+  },
+  {
+   "name": "MCFL_JUL26_assembled.xlsx",
+   "size": 5393598
+  },
+  {
+   "name": "MCFL_JUN26_assembled.xlsx",
+   "size": 4522986
+  },
+  {
+   "name": "MCFL_MAY26_assembled.xlsx",
+   "size": 4463896
+  },
+  {
+   "name": "MCFL_OCT26_assembled.xlsx",
+   "size": 6777470
+  },
+  {
+   "name": "MCFL_SEP26_assembled.xlsx",
+   "size": 6748788
+  }
+ ]
+}

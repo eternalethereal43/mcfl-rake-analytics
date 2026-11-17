@@ -1,23 +1,24 @@
 # MCFL Rake Analytics
 
-A single-file browser app for the month-wise freight registers of rakes loaded from Mahanadi Coalfields (MCFL). Point it at the folder of registers and it builds rake, POL / UL, PMT, RSR and commercial analytics.
+A single-file browser app for the month-wise freight registers of rakes loaded from Mahanadi Coalfields (MCFL): customer rakes, POL / UL, POL & UL PMT, RSR movement, coalfield and commercial analytics.
 
 **Open the app:** https://eternalethereal43.github.io/mcfl-rake-analytics/ (Chrome or Edge)
 
-You can also download `index.html` and open it from your own computer. It works offline.
+The online app reads every register in this repository's [`data/`](data) folder on its own. Nothing needs to be selected.
 
-## Your data stays on your computer
+> **Note:** the registers in `data/` are public. Anyone can download them, including consignee GSTINs, invoice and e-payment IDs and freight amounts. Files removed later still remain in the git history.
 
-The app has no server. Register files are read inside your browser and never uploaded, including when you open it from the GitHub Pages link. This repository holds only the app; `.gitignore` blocks `.xlsx`, `.xls` and `.csv` files so register data can't be committed by mistake.
+## Adding a new month
 
-## How to use
+1. Copy the new register (for example `MCFL_NOV26_assembled.xlsx`) into the `data` folder of this repository on your PC.
+2. In GitHub Desktop, enter a summary such as "Add Nov 2026", click **Commit to main**, then **Push origin**.
+3. Reload the app (or click **Rescan**). The new file is picked up straight away.
 
-1. Open the app in Chrome or Edge.
-2. Click **Select MCFL folder** and choose the folder that holds the monthly registers (for example `D:\Railways Freight Register\MCFL`). Sub-folders are read too.
-3. Use the filter bar (period, coalfield, siding, customer, movement) to narrow every tab.
-4. When a new month's register is added, click **Rescan**. Chrome and Edge remember the folder.
+The app lists `data/` through GitHub's file listing, so no other file needs editing. `data/manifest.json` is only a fallback for when that listing is unavailable (GitHub allows 60 listings an hour per network). Add new file names to it if you want the fallback to stay complete.
 
-Other browsers can use **Choose files** to pick the registers each time.
+## Using local files instead
+
+The app can also read a folder on your own computer: **Change folder** (or **Choose files**) loads registers from your PC without uploading them. You can download `index.html` and open it offline too. Its **Load data from GitHub** button fetches the online registers.
 
 ## Expected input
 
