@@ -1,0 +1,11 @@
+# Never commit freight-register data
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+~$*
+
+# OS clutter
+Thumbs.db
+desktop.ini
+.DS_Store
